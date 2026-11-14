@@ -18,20 +18,32 @@ jobs:
       - name: Generate Android host shell
         run: flutter create --platforms=android --org com.example --project-name pdfapp .
 
-      - name: Patch android/build.gradle (Kotlin version)
+      - name: Pin flutter_tts to a Kotlin-safe version
         run: |
-          sed -i "s/ext.kotlin_version = .*/ext.kotlin_version = '2.0.20'/" android/build.gradle
-          grep -n kotlin_version android/build.gradle
+          sed -i 's/flutter_tts: \^4.0.2/flutter_tts: 4.0.2/' pubspec.yaml
+          sed -i 's/flutter_tts: \^4.2.5/flutter_tts: 4.0.2/' pubspec.yaml
+          grep flutter_tts pubspec.yaml
 
-      - name: Patch android/app/build.gradle (minSdk + compileSdk)
+      - name: Patch app/build.gradle (SDK versions)
         run: |
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle
-          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' android/app/build.gradle
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle
+          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/' android/app/build.gradle
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 34/' android/app/build.gradle
           sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/' android/app/build.gradle
           sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 34/' android/app/build.gradle
-          echo "---- build.gradle android block ----"
-          grep -nE 'minSdk|compileSdk|targetSdk' android/app/build.gradle
+          echo "--- app/build.gradle SDK lines ---"
+          grep -nE 'minSdk|compileSdk|targetSdk' android/app/build.gradle || echo "no SDK lines matched (Flutter 3.22 may format differently)"
+
+      - name: Patch settings.gradle (Kotlin plugin version)
+        run: |
+          # Flutter 3.22 stores the Kotlin plugin version here, NOT in build.gradle
+          if grep -q 'org.jetbrains.kotlin.android' android/settings.gradle; then
+            sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "2.0.20"/' android/settings.gradle
+          else
+            echo "Kotlin plugin not declared in settings.gradle — nothing to do"
+          fi
+          echo "--- settings.gradle ---"
+          cat android/settings.gradle
 
       - name: Patch AndroidManifest
         run: |
@@ -77,12 +89,6 @@ jobs:
           open(p, 'w').write(s)
           print(open(p).read())
           PY
-
-      - name: Pin flutter_tts to a Kotlin-compatible version
-        run: |
-          # flutter_tts 4.2.5 needs Kotlin 2.x; 4.0.2 works with Kotlin 1.9+
-          sed -i 's/flutter_tts: \^4.0.2/flutter_tts: 4.0.2/' pubspec.yaml || true
-          grep flutter_tts pubspec.yaml
 
       - name: Install dependencies
         run: flutter pub get
