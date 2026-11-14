@@ -555,6 +555,7 @@ jobs:
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
           '''
           s = re.sub(r'(<manifest[^>]*>)', r'\1' + perms, s, count=1)
+          
           queries = '''
               <queries>
                   <intent>
@@ -562,7 +563,9 @@ jobs:
                   </intent>
               </queries>
           '''
-          s = s.replace('</application>', queries + '</application>', 1)
+          # FIX: Insert queries BEFORE <application> tag so it's a direct child of <manifest>
+          s = s.replace('<application', queries + '<application', 1)
+          
           svc = '''
               <service android:name="com.ryanheise.audioservice.AudioService"
                        android:foregroundServiceType="mediaPlayback"
