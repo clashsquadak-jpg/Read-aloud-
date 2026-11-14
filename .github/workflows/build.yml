@@ -1,67 +1,67 @@
 - name: Patch app/build.gradle (SDK versions)
-        run: |
-          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle
-          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/' android/app/build.gradle
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 34/' android/app/build.gradle
-          sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/' android/app/build.gradle
-          sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 34/' android/app/build.gradle
-          grep -nE 'minSdk|compileSdk|targetSdk' android/app/build.gradle || true
+  run: |
+    sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle
+    sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/' android/app/build.gradle
+    sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 34/' android/app/build.gradle
+    sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/' android/app/build.gradle
+    sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 34/' android/app/build.gradle
+    grep -nE 'minSdk|compileSdk|targetSdk' android/app/build.gradle || true
 
-      - name: Patch settings.gradle (Kotlin plugin version)
-        run: |
-          if grep -q 'org.jetbrains.kotlin.android' android/settings.gradle; then
-            sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "2.0.20"/' android/settings.gradle
-          fi
-          grep -n 'org.jetbrains.kotlin.android' android/settings.gradle || true
+- name: Patch settings.gradle (Kotlin plugin version)
+  run: |
+    if grep -q 'org.jetbrains.kotlin.android' android/settings.gradle; then
+      sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "2.0.20"/' android/settings.gradle
+    fi
+    grep -n 'org.jetbrains.kotlin.android' android/settings.gradle || true
 
-      - name: Patch AndroidManifest
-        run: |
-          python3 << 'PY'
-          import re
-          p = 'android/app/src/main/AndroidManifest.xml'
-          s = open(p).read()
-          perms = '''
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
-              <uses-permission android:name="android.permission.WAKE_LOCK"/>
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-          '''
-          s = re.sub(r'(<manifest[^>]*>)', r'\1' + perms, s, count=1)
-          queries = '''
-              <queries>
-                  <intent>
-                      <action android:name="android.intent.action.TTS_SERVICE"/>
-                  </intent>
-              </queries>
-          '''
-          s = s.replace('</application>', queries + '</application>', 1)
-          svc = '''
-              <service android:name="com.ryanheise.audioservice.AudioService"
-                       android:foregroundServiceType="mediaPlayback"
-                       android:exported="true">
-                  <intent-filter>
-                      <action android:name="android.media.browse.MediaBrowserService"/>
-                  </intent-filter>
-              </service>
-              <receiver android:name="com.ryanheise.audioservice.MediaButtonReceiver"
-                        android:exported="true">
-                  <intent-filter>
-                      <action android:name="android.intent.action.MEDIA_BUTTON"/>
-                  </intent-filter>
-              </receiver>
-          '''
-          s = s.replace('</application>', svc + '</application>', 1)
-          open(p, 'w').write(s)
-          PY
+- name: Patch AndroidManifest
+  run: |
+    python3 << 'PY'
+    import re
+    p = 'android/app/src/main/AndroidManifest.xml'
+    s = open(p).read()
+    perms = '''
+        <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+        <uses-permission android:name="android.permission.WAKE_LOCK"/>
+        <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    '''
+    s = re.sub(r'(<manifest[^>]*>)', r'\1' + perms, s, count=1)
+    queries = '''
+        <queries>
+            <intent>
+                <action android:name="android.intent.action.TTS_SERVICE"/>
+            </intent>
+        </queries>
+    '''
+    s = s.replace('</application>', queries + '</application>', 1)
+    svc = '''
+        <service android:name="com.ryanheise.audioservice.AudioService"
+                 android:foregroundServiceType="mediaPlayback"
+                 android:exported="true">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService"/>
+            </intent-filter>
+        </service>
+        <receiver android:name="com.ryanheise.audioservice.MediaButtonReceiver"
+                  android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON"/>
+            </intent-filter>
+        </receiver>
+    '''
+    s = s.replace('</application>', svc + '</application>', 1)
+    open(p, 'w').write(s)
+    PY
 
-      - name: Install dependencies
-        run: flutter pub get
+- name: Install dependencies
+  run: flutter pub get
 
-      - name: Build APK
-        run: flutter build apk --release
+- name: Build APK
+  run: flutter build apk --release
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pdf-read-aloud-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+- uses: actions/upload-artifact@v4
+  with:
+    name: pdf-read-aloud-apk
+    path: build/app/outputs/flutter-apk/app-release.apk
