@@ -31,18 +31,13 @@ jobs:
           sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 34/' android/app/build.gradle
           sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/' android/app/build.gradle
           sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 34/' android/app/build.gradle
-          echo "--- app/build.gradle SDK lines ---"
-          grep -nE 'minSdk|compileSdk|targetSdk' android/app/build.gradle || echo "no SDK lines matched (Flutter 3.22 may format differently)"
+          grep -nE 'minSdk|compileSdk|targetSdk' android/app/build.gradle || true
 
       - name: Patch settings.gradle (Kotlin plugin version)
         run: |
-          # Flutter 3.22 stores the Kotlin plugin version here, NOT in build.gradle
           if grep -q 'org.jetbrains.kotlin.android' android/settings.gradle; then
             sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "2.0.20"/' android/settings.gradle
-          else
-            echo "Kotlin plugin not declared in settings.gradle — nothing to do"
           fi
-          echo "--- settings.gradle ---"
           cat android/settings.gradle
 
       - name: Patch AndroidManifest
@@ -87,7 +82,28 @@ jobs:
           '''
           s = s.replace('</application>', svc + '</application>', 1)
           open(p, 'w').write(s)
-          print(open(p).read())
+          PY
+
+      - name: Repair main.dart paste corruptions
+        run: |
+          python3 << 'PY'
+          p = 'lib/main.dart'
+          s = open(p).read()
+          fixes = 0
+          if "import 'package:file_picker/fimport 'dart:io';" in s:
+              s = s.replace(
+                  "import 'package:file_picker/fimport 'dart:io';",
+                  "import 'dart:io';\nimport 'package:file_picker/file_picker.dart';"
+              )
+              fixes += 1
+          if "}PDF to view and read'))" in s:
+              s = s.replace(
+                  "}PDF to view and read'))",
+                  "? const Center(child: Text('Pick a PDF to view and read'))"
+              )
+              fixes += 1
+          open(p, 'w').write(s)
+          print(f"Applied {fixes} repair(s) to main.dart")
           PY
 
       - name: Install dependencies
