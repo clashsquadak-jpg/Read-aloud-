@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
+import 'package:file_picker/fimport 'dart:io';
+import 'package:audio_service/audio_service.dart';
+import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 late _Handler handler;
 
@@ -13,7 +15,6 @@ Future<void> main() async {
   runApp(const App());
 }
 
-// ---------- math to speech ----------
 String mathToSpeech(String t) {
   final rules = <List<String>>[
     [r'\\frac\{([^{}]+)\}\{([^{}]+)\}', r'$1 over $2'],
@@ -87,14 +88,12 @@ Future<List<String>> extractChunks(File f) async {
   return chunkText(sb.toString());
 }
 
-// ---------- TTS handler ----------
 class _Handler extends BaseAudioHandler {
   final FlutterTts tts = FlutterTts();
   List<String> chunks = [];
   int idx = 0;
   double rate = 0.95;
   bool active = false;
-  void Function(int newIndex)? onIndexChanged;
 
   Future<void> init() async {
     await tts.awaitSpeakCompletion(true);
@@ -108,8 +107,17 @@ class _Handler extends BaseAudioHandler {
         orElse: () => <String, dynamic>{},
       ),
     );
-    if (chosen.isNotEmpty) await tts.setVoice(Map<String, dynamic>.from(chosen as Map));
-    tts.setCompletionHandler(() { if (active) { idx++; _speak(); } });
+    if (chosen.isNotEmpty) {
+      await tts.setVoice(
+        chosen.map((k, v) => MapEntry(k.toString(), v.toString())),
+      );
+    }
+    tts.setCompletionHandler(() {
+      if (active) {
+        idx++;
+        _speak();
+      }
+    });
     tts.setErrorHandler((_) {
       active = false;
       playbackState.add(playbackState.value.copyWith(playing: false));
@@ -121,16 +129,27 @@ class _Handler extends BaseAudioHandler {
     return (raw as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  Future<void> setRate(double r) async { rate = r; await tts.setSpeechRate(r); }
+  Future<void> setRate(double r) async {
+    rate = r;
+    await tts.setSpeechRate(r);
+  }
 
   Future<void> setVoice(String name) async {
     final v = (await voices()).firstWhere((e) => e['name'] == name);
-    await tts.setVoice(v);
+    await tts.setVoice(
+      v.map((k, val) => MapEntry(k.toString(), val.toString())),
+    );
   }
 
   @override
   Future<void> play() async {
-    if (active) { await tts.resume(); } else { active = true; _speak(); }
+    if (active) {
+      await tts.stop();
+      await _speak();
+    } else {
+      active = true;
+      await _speak();
+    }
     playbackState.add(playbackState.value.copyWith(
         processingState: AudioProcessingState.ready, playing: true));
   }
@@ -151,12 +170,20 @@ class _Handler extends BaseAudioHandler {
 
   @override
   Future<void> skipToNext() async {
-    if (idx < chunks.length - 1) { idx++; onIndexChanged?.call(idx); await tts.stop(); if (active) _speak(); }
+    if (idx < chunks.length - 1) {
+      idx++;
+      await tts.stop();
+      if (active) _speak();
+    }
   }
 
   @override
   Future<void> skipToPrevious() async {
-    if (idx > 0) { idx--; onIndexChanged?.call(idx); await tts.stop(); if (active) _speak(); }
+    if (idx > 0) {
+      idx--;
+      await tts.stop();
+      if (active) _speak();
+    }
   }
 
   Future<void> _speak() async {
@@ -167,24 +194,24 @@ class _Handler extends BaseAudioHandler {
       return;
     }
     await tts.speak(mathToSpeech(chunks[idx]));
-    onIndexChanged?.call(idx);
     mediaItem.add(MediaItem(
-      id: 'c$idx', title: 'Part ${idx + 1}/${chunks.length}',
-      artist: 'PDF Read Aloud'));
+        id: 'c$idx',
+        title: 'Part ${idx + 1}/${chunks.length}',
+        artist: 'PDF Read Aloud'));
     playbackState.add(playbackState.value.copyWith(
         processingState: AudioProcessingState.ready,
-        playing: true, updatePosition: Duration.zero));
+        playing: true,
+        updatePosition: Duration.zero));
   }
 }
 
-// ---------- App ----------
 class App extends StatelessWidget {
   const App({super.key});
   @override
   Widget build(BuildContext c) => MaterialApp(
-    theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo),
-    home: const Home(),
-  );
+        theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo),
+        home: const Home(),
+      );
 }
 
 class Home extends StatefulWidget {
@@ -194,19 +221,13 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  File? _pdfFile;
-  final PdfViewerController _viewerCtrl = PdfViewerController();
-  final GlobalKey<SfPdfViewerState> _viewerKey = GlobalKey();
-
   bool reading = false;
   bool paused = false;
   double rate = 0.95;
   String status = 'Pick a PDF first';
   String voiceLabel = 'Auto';
   List<Map<String, dynamic>> voices = [];
-  List<String> _chunks = [];
-  int _currentChunk = 0;
-  String? _selectedText; // from user's text selection
+  List<String> _pendingChunks = [];
 
   Future<void> _pick() async {
     final res = await FilePicker.platform
@@ -215,31 +236,26 @@ class _HomeState extends State<Home> {
     final f = File(res.files.single.path!);
     setState(() => status = 'Extracting…');
     final chunks = await extractChunks(f);
-    setState(() {
-      _pdfFile = f;
-      _chunks = chunks;
-      status = 'Ready: ${chunks.length} parts';
-    });
+    setState(() => status = 'Ready: ${chunks.length} parts');
+    _pendingChunks = chunks;
   }
 
   Future<void> _start() async {
-    if (_chunks.isEmpty) { setState(() => status = 'Pick a PDF first'); return; }
+    if (_pendingChunks.isEmpty) {
+      setState(() => status = 'Pick a PDF first');
+      return;
+    }
     if (!reading) {
       handler = await AudioService.init(
-        builder: () => _Handler()..chunks = _chunks,
+        builder: () => _Handler()..chunks = _pendingChunks,
         config: const AudioServiceConfig(
           androidNotificationChannelId: 'pdf.read',
           androidNotificationChannelName: 'PDF Read Aloud',
-          androidNotificationOngoing: true,
-          androidStopForegroundOnPause: false,
+          androidNotificationOngoing: false,
+          androidStopForegroundOnPause: true,
         ),
       );
       await handler.init();
-      handler.onIndexChanged = (i) {
-        if (mounted) setState(() => _currentChunk = i);
-        // Auto-scroll viewer to follow speech (best-effort)
-        try { _viewerCtrl.jumpToPage(1); } catch (_) {}
-      };
       reading = true;
       final v = await handler.voices();
       setState(() {
@@ -250,62 +266,118 @@ class _HomeState extends State<Home> {
             (e) => '${e['locale']}'.startsWith('en'),
             orElse: () => <String, dynamic>{},
           ),
-        )['name'] ?? 'Default';
+        )['name'] ??
+            'Default';
       });
     }
     await handler.play();
-    setState(() { paused = false; status = 'Reading…'; });
-  }
-
-  /// Read ONLY the text the user selected on the page.
-  Future<void> _readSelection() async {
-    if (_selectedText == null || _selectedText!.trim().isEmpty) {
-      setState(() => status = 'Select some text first (long-press on the page)');
-      return;
-    }
-    if (!reading) {
-      await _start();
-    }
-    // Insert selection as a one-off chunk and speak it
-    handler.chunks = [_selectedText!];
-    handler.idx = 0;
-    await handler.stop();
-    await handler.play();
-    setState(() => status = 'Reading selection…');
+    setState(() {
+      paused = false;
+      status = 'Reading…';
+    });
   }
 
   @override
   Widget build(BuildContext c) => Scaffold(
-    appBar: AppBar(
-      title: const Text('PDF Read Aloud'),
-      actions: [
-        if (_pdfFile != null)
-          IconButton(
-            tooltip: 'Read selected text',
-            icon: const Icon(Icons.play_circle_outline),
-            onPressed: _readSelection,
-          ),
-      ],
-    ),
-    body: Column(children: [
-      // ---- toolbar ----
-      Padding(
-        padding: const EdgeInsets.all(8),
-        child: Row(children: [
-          ElevatedButton.icon(
-            onPressed: _pick,
-            icon: const Icon(Icons.upload_file),
-            label: const Text('Pick PDF'),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(status, overflow: TextOverflow.ellipsis)),
-        ]),
-      ),
-
-      // ---- PDF viewer (with text selection enabled) ----
-      Expanded(
-        child: _pdfFile == null
-            ? const Center(child: Text('Pick a PDF to view and read'))
+        appBar: AppBar(title: const Text('PDF Read Aloud')),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(children: [
+            ElevatedButton.icon(
+              onPressed: _pick,
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Pick PDF'),
+            ),
+            const SizedBox(height: 12),
+            Text(status),
+            const SizedBox(height: 20),
+            if (reading)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(children: [
+                    if (voices.isNotEmpty)
+                      DropdownButton<String>(
+                        isExpanded: true,
+                        value: voiceLabel,
+                        items: voices
+                            .map((v) => DropdownMenuItem(
+                                  value: v['name'] as String,
+                                  child:
+                                      Text('${v['name']} (${v['locale']})'),
+                                ))
+                            .toList(),
+                        onChanged: (v) {
+                          if (v == null) return;
+                          setState(() => voiceLabel = v);
+                          handler.setVoice(v);
+                        },
+                      ),
+                    Row(children: [
+                      const Text('Speed'),
+                      Expanded(
+                        child: Slider(
+                          value: rate,
+                          min: 0.5,
+                          max: 1.5,
+                          divisions: 20,
+                          label: rate.toStringAsFixed(2),
+                          onChanged: (v) => setState(() => rate = v),
+                          onChangeEnd: (v) => handler.setRate(v),
+                        ),
+                      ),
+                      Text(rate.toStringAsFixed(2)),
+                    ]),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        IconButton(
+                          iconSize: 36,
+                          icon: const Icon(Icons.skip_previous),
+                          onPressed: () => handler.skipToPrevious(),
+                        ),
+                        IconButton(
+                          iconSize: 48,
+                          icon: Icon(
+                              paused ? Icons.play_arrow : Icons.pause),
+                          onPressed: () async {
+                            if (paused) {
+                              await handler.play();
+                            } else {
+                              await handler.pause();
+                            }
+                            setState(() => paused = !paused);
+                          },
+                        ),
+                        IconButton(
+                          iconSize: 36,
+                          icon: const Icon(Icons.skip_next),
+                          onPressed: () => handler.skipToNext(),
+                        ),
+                      ],
+                    ),
+                  ]),
+                ),
+              ),
+            const Spacer(),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  backgroundColor: Colors.indigo,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: _start,
+                icon: const Icon(Icons.record_voice_over),
+                label: const Text('Read Aloud',
+                    style: TextStyle(fontSize: 18)),
+              ),
+            ),
+          ]),
+        ),
+      );
+}PDF to view and read'))
             : SfPdfViewer.file(
                 _pdfFile!,
                 key: _viewerKey,
