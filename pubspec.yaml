@@ -1,0 +1,17 @@
+name: pdfapp
+description: PDF Read Aloud
+publish_to: 'none'
+version: 1.0.0+1
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  file_picker: ^8.0.0
+  syncfusion_flutter_pdf: ^25.2.3
+  syncfusion_flutter_pdfviewer: ^25.2.3
+  flutter_tts: ^4.0.2
+  audio_service: ^0.18.15
+  cupertino_icons: ^1.0.6
+flutter:
+  uses-material-design: true
