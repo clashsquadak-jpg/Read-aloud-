@@ -18,10 +18,20 @@ jobs:
       - name: Generate Android host shell
         run: flutter create --platforms=android --org com.example --project-name pdfapp .
 
-      - name: Patch build.gradle (minSdk 23)
+      - name: Patch android/build.gradle (Kotlin version)
+        run: |
+          sed -i "s/ext.kotlin_version = .*/ext.kotlin_version = '2.0.20'/" android/build.gradle
+          grep -n kotlin_version android/build.gradle
+
+      - name: Patch android/app/build.gradle (minSdk + compileSdk)
         run: |
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle
-          grep -n minSdk android/app/build.gradle
+          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' android/app/build.gradle
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle
+          sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/' android/app/build.gradle
+          sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 34/' android/app/build.gradle
+          echo "---- build.gradle android block ----"
+          grep -nE 'minSdk|compileSdk|targetSdk' android/app/build.gradle
 
       - name: Patch AndroidManifest
         run: |
@@ -67,6 +77,12 @@ jobs:
           open(p, 'w').write(s)
           print(open(p).read())
           PY
+
+      - name: Pin flutter_tts to a Kotlin-compatible version
+        run: |
+          # flutter_tts 4.2.5 needs Kotlin 2.x; 4.0.2 works with Kotlin 1.9+
+          sed -i 's/flutter_tts: \^4.0.2/flutter_tts: 4.0.2/' pubspec.yaml || true
+          grep flutter_tts pubspec.yaml
 
       - name: Install dependencies
         run: flutter pub get
